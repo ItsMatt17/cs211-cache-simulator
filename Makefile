@@ -11,7 +11,7 @@
 #   make clean    removes both executables and generated text outputs
 
 CC = gcc
-CFLAGS = -Wall -Werror -O2
+CFLAGS = -Wall -Werror -O2 -g
 
 MAIN_SRC = Cache_predictor.c
 INITIAL_SRC = Cache_predictor_initial.c
@@ -21,7 +21,7 @@ INITIAL_OUT = Cache_predictor_initial.out
 
 .PHONY: all main initial clean
 
-all: main initial
+all: main 
 
 main: $(MAIN_OUT)
 
