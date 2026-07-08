@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 // --- Config ---
 
@@ -10,16 +11,20 @@ const int CACHE_BLOCK_SIZE = 4;          // Bytes each block can store
 const int CACHE_WAYS = 16;               // Lines per set
 const int CACHE_SETS = 16;               // Number of sets
 
-const int CACHE_LINE_OFFSET_SIZE = 2;    // Bits for offset
-const int CACHE_LINE_INDEX_SIZE = 4;     // Bits for set index  
-const int CACHE_TAG_SIZE = 6;            // Bits for tag 
+int CACHE_LINE_OFFSET_SIZE;              // Bits for offset
+int CACHE_LINE_INDEX_SIZE;               // Bits for set index  
+int CACHE_TAG_SIZE;                      // Bits for tag 
 
 
 
 
 // This is associated with the memory address block for a requested block of 4.
 // It'll be place in 4 block alignments (i.e -> Read 0x125 -> Line = [0x124, 0x125, 0x126, 0x127] ) 
-typedef int Line;
+typedef struct { 
+    unsigned int last_tick;
+    int tag; // This refers to entire cache line indentifier not just "tag"
+    char valid;
+}Line;
 
 // This is the abstraction of Cache Sets that allows us to implement different way set associations 
 typedef struct {
@@ -39,9 +44,7 @@ CacheSet* cache_init(){
 
     for (int i = 0; i < CACHE_SETS; i++){ 
         cache[i].lines = (Line *) malloc(CACHE_WAYS * sizeof(Line));
-
         // Have all lines by default start at zero, so a validity bit can be included
-        memset(cache->lines, 0, CACHE_WAYS * sizeof(Line));
     }
     return cache;
 }
@@ -58,18 +61,6 @@ int get_tag(int addr){
     return addr >> (CACHE_LINE_OFFSET_SIZE + CACHE_LINE_INDEX_SIZE);
 }
 
-int valid_bit(int addr){ 
-    return addr & (1 << 31);
-}
-
-int set_valid_bit (int addr) {
-    return addr | (1 << 31);
-}
-
-// This gets the address w/o any valid bits set;
-int get_addr(int addr){ 
-    return addr & (MEMORY_SIZE - 1);
-}
 
 void binprintf(int v){
     unsigned int mask=1<<((sizeof(int)<<3)-1);
@@ -90,11 +81,16 @@ int main(int argc, char** argv){
     if (fp == NULL){
         printf("Error opening the file: %s\n", argv[1]);
         return EXIT_FAILURE;
-    }
+    }   
+
+    CACHE_LINE_INDEX_SIZE = (int) log2(CACHE_SETS);
+    CACHE_LINE_OFFSET_SIZE = (int) log2(CACHE_BLOCK_SIZE); 
+    CACHE_TAG_SIZE = (int) log2(MEMORY_SIZE) - CACHE_LINE_INDEX_SIZE - CACHE_LINE_OFFSET_SIZE;
 
     CacheSet *cache = cache_init();
     
     int curr;
+    unsigned int tick = 0;
     while (fscanf(fp, "%x", &curr) != EOF){ 
         // Gets the addr aligned on 4, so READ 0x125 -> Line = [0x124, 0x125, 0x126, 0x127] 
         // This may be more optimal given a real cache, will test. 
@@ -108,15 +104,26 @@ int main(int argc, char** argv){
         printf(" idx=%d, tag=%d, ofs=%d}\n", idx, tag, ofs);
         
         CacheSet set = cache[idx];
+        int last_used_idx = 0;
         for(int i = 0; i < CACHE_WAYS; i++){ 
-            int line = set.lines[i];
-            if (get_addr(line) == curr) break;
-            if (valid_bit(line)) continue; 
-            
-            set.lines[i] = set_valid_bit(curr);
-            break;
-        }
+            Line line = set.lines[i];
+            last_used_idx = set.lines[last_used_idx].last_tick > set.lines[i].last_tick ? i : last_used_idx;
 
+            if (line.tag == curr || !(line.valid)){ 
+                set.lines[i].tag = curr;
+                set.lines[i].last_tick = tick;
+                set.lines[i].valid = 1;              
+                break;
+            }
+    
+            if (i == (CACHE_WAYS - 1)){ 
+                set.lines[last_used_idx].tag = curr; 
+                set.lines[last_used_idx].last_tick = tick;
+                line.valid = 1;              
+            }
+        
+        }
+        tick++;
     }   
     fclose(fp);
     fp = NULL;
@@ -127,17 +134,16 @@ int main(int argc, char** argv){
         return EXIT_FAILURE;
     }
 
-
     for(int i = 0; i < CACHE_SETS; i++){ 
         CacheSet set = cache[i];
         for(int j = 0; j < CACHE_WAYS; j++){ 
-            int line = get_addr(set.lines[j]);
-            int valid = valid_bit(set.lines[j]);
+            Line line = set.lines[j];
+            char valid = line.valid;
             if (!valid) continue;
             
 
             for (int k = 0; k < CACHE_BLOCK_SIZE; k++){ 
-                fprintf(fp, "0x%x\n", line + k);
+                fprintf(fp, "0x%x\n", line.tag + k);
             }
         }
 

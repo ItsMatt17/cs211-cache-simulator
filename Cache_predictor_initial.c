@@ -1,26 +1,25 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 // --- Config ---
-
 const int MEMORY_SIZE = 4096;            // Number of unique byte addresses log_2(4096) = 12;
 const int CACHE_SIZE = 1024;             // Size Cache given in Bytes
 const int CACHE_BLOCK_SIZE = 4;          // Bytes each block can store
-const int CACHE_WAYS = 8;                // Lines per set
-const int CACHE_SETS = 32;               // Number of sets
+const int CACHE_WAYS = 16;               // Lines per set
+const int CACHE_SETS = 16;               // Number of sets
 
-const int CACHE_LINE_OFFSET_SIZE = 2;    // Bits for offset
-const int CACHE_LINE_INDEX_SIZE = 5;     // Bits for set index  
-const int CACHE_TAG_SIZE = 5;            // Bits for tag 
-
-
+int CACHE_LINE_OFFSET_SIZE;              // Bits for offset
+int CACHE_LINE_INDEX_SIZE;               // Bits for set index  
+int CACHE_TAG_SIZE;                      // Bits for tag 
 
 
 // This is associated with the memory address block for a requested block of 4.
 // It'll be place in 4 block alignments (i.e -> Read 0x125 -> Line = [0x124, 0x125, 0x126, 0x127] ) 
 typedef struct { 
     unsigned int last_tick;
+    unsigned int freq;
     int tag; // This refers to entire cache line indentifier not just "tag"
     char valid;
 }Line;
@@ -69,6 +68,7 @@ void binprintf(int v){
     }
 }
 
+
 int main(int argc, char** argv){
     
     if(argc != 3){ 
@@ -80,7 +80,11 @@ int main(int argc, char** argv){
     if (fp == NULL){
         printf("Error opening the file: %s\n", argv[1]);
         return EXIT_FAILURE;
-    }
+    }   
+
+    CACHE_LINE_INDEX_SIZE = (int) log2(CACHE_SETS);
+    CACHE_LINE_OFFSET_SIZE = (int) log2(CACHE_BLOCK_SIZE); 
+    CACHE_TAG_SIZE = (int) log2(MEMORY_SIZE) - CACHE_LINE_INDEX_SIZE - CACHE_LINE_OFFSET_SIZE;
 
     CacheSet *cache = cache_init();
     
@@ -99,22 +103,41 @@ int main(int argc, char** argv){
         printf(" idx=%d, tag=%d, ofs=%d}\n", idx, tag, ofs);
         
         CacheSet set = cache[idx];
-        int last_used_idx = 0;
+        Line least_freq = set.lines[0];
+        int least_freq_idx = 0;
         for(int i = 0; i < CACHE_WAYS; i++){ 
             Line line = set.lines[i];
-            last_used_idx = set.lines[last_used_idx].last_tick > set.lines[i].last_tick ? i : last_used_idx;
 
-            if (line.tag == curr || !(line.valid)){ 
+            // Track frequency and break ties based on LRU
+            if (least_freq.freq == line.freq) { 
+                least_freq_idx = least_freq.last_tick >= line.last_tick ? least_freq_idx : i;
+                least_freq = set.lines[least_freq_idx];
+            } 
+
+            if (least_freq.freq < line.freq){ 
+                least_freq = line;
+                least_freq_idx = i;
+            }
+
+
+            if (line.tag == curr){ 
+                set.lines[i].last_tick = tick;
+                set.lines[i].freq += 1;
+                break;
+            }
+
+            if (!(line.valid)){ 
                 set.lines[i].tag = curr;
                 set.lines[i].last_tick = tick;
-                set.lines[i].valid = 1;              
+                set.lines[i].valid = 1;  
+                set.lines[i].freq = 0;
                 break;
             }
     
             if (i == (CACHE_WAYS - 1)){ 
-                set.lines[last_used_idx].tag = curr; 
-                set.lines[last_used_idx].last_tick = tick;
-                line.valid = 1;              
+                set.lines[least_freq_idx].tag = curr; 
+                set.lines[least_freq_idx].last_tick = tick;
+                line.valid = 1;   
             }
         
         }

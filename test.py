@@ -2,11 +2,9 @@ import sys
 
 
 MY_PRED = "test123.txt"
-ACTUAL = "tests/predictions2.txt"
+ACTUAL = "tests/predictions3.txt"
 
 def main(): 
-
-  
     with open(MY_PRED) as f:
         s1 = {int(line, 16) for line in f if line.strip()}
     
