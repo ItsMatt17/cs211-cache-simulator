@@ -21,7 +21,7 @@ INITIAL_OUT = Cache_predictor_initial.out
 
 .PHONY: all main initial clean
 
-all: main 
+all: main initial
 
 main: $(MAIN_OUT)
 
