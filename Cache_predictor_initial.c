@@ -20,7 +20,7 @@ int CACHE_TAG_SIZE;                      // Bits for tag
 typedef struct { 
     unsigned int last_tick;
     unsigned int freq;
-    int tag; // This refers to entire cache line indentifier not just "tag"
+    int addr; // This refers to entire cache line indentifier not just "tag"
     char valid;
 }Line;
 
@@ -59,7 +59,6 @@ int get_tag(int addr){
     return addr >> (CACHE_LINE_OFFSET_SIZE + CACHE_LINE_INDEX_SIZE);
 }
 
-
 void binprintf(int v){
     unsigned int mask=1<<((sizeof(int)<<3)-1);
     while(mask) {
@@ -67,7 +66,6 @@ void binprintf(int v){
         mask >>= 1;
     }
 }
-
 
 int main(int argc, char** argv){
     
@@ -120,14 +118,14 @@ int main(int argc, char** argv){
             }
 
 
-            if (line.tag == curr){ 
+            if (line.addr == curr){ 
                 set.lines[i].last_tick = tick;
                 set.lines[i].freq += 1;
                 break;
             }
 
             if (!(line.valid)){ 
-                set.lines[i].tag = curr;
+                set.lines[i].addr = curr;
                 set.lines[i].last_tick = tick;
                 set.lines[i].valid = 1;  
                 set.lines[i].freq = 0;
@@ -135,7 +133,7 @@ int main(int argc, char** argv){
             }
     
             if (i == (CACHE_WAYS - 1)){ 
-                set.lines[least_freq_idx].tag = curr; 
+                set.lines[least_freq_idx].addr = curr; 
                 set.lines[least_freq_idx].last_tick = tick;
                 line.valid = 1;   
             }
@@ -161,7 +159,7 @@ int main(int argc, char** argv){
             
 
             for (int k = 0; k < CACHE_BLOCK_SIZE; k++){ 
-                fprintf(fp, "0x%x\n", line.tag + k);
+                fprintf(fp, "0x%x\n", line.addr + k);
             }
         }
 
